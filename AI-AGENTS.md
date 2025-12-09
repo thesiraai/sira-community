@@ -114,3 +114,49 @@ ALWAYS lint any changes you make
 - Follow project conventions, prevent knowledge silos
 - Recommend storage locations by info type
 - Inform when this file changes and reloads
+
+## Docker & Deployment (SIRA Community Specific)
+
+### Infrastructure Integration
+- **Service Names**: Always use Docker service names (e.g., `postgres-community`, `redis`) not container names or `localhost`
+- **Network**: Services must be on `sira_infra_network` to access infrastructure services
+- **Ports**: Use internal ports (5432 for PostgreSQL, 6380 for Redis TLS) not external ports (5433)
+
+### Certificate Management
+- **Read-Only Mounts**: Certificates mounted from host are read-only and root-owned
+- **Entrypoint Script**: Must run as root to copy certificates to writable location (`/var/www/community/tmp/ssl/`)
+- **Permissions**: Set correct permissions (644 for certs, 600 for keys) and ownership (`community:community`)
+- **Environment Variables**: Export certificate paths pointing to writable locations after copying
+
+### SSL/TLS Configuration
+- **PostgreSQL (mTLS)**: Requires `sslmode`, `sslcert`, `sslkey`, `sslrootcert` in `database_config`
+- **Redis (TLS)**: Requires `ssl_params` with OpenSSL objects (`OpenSSL::X509::Certificate`, `OpenSSL::PKey::RSA`) and `ca_file` as string path
+- **Library Differences**: `redis-rb` needs OpenSSL objects, `pg` gem needs string paths
+- **Certificate Paths**: Use environment variables (set by entrypoint) not config file substitution
+
+### Certificate Generation (Production-Grade)
+- **CRITICAL: Server certificates MUST include "Digital Signature" in Key Usage** - Modern browsers (Chrome, Edge, Firefox) reject certificates without this
+- **Key Usage Requirements**:
+  - Server certificates: `digitalSignature, keyEncipherment, dataEncipherment` (all required)
+  - Set Key Usage as `critical` in OpenSSL config
+- **Extended Key Usage**: Must include `serverAuth` (1.3.6.1.5.5.7.3.1)
+- **Certificate Types**: Never use client certificates (`*-client.crt`) as server certificates - always use `*-server.crt`
+- **Verification**: Always verify certificate Key Usage after generation using `openssl x509 -text -noout`
+- **OpenSSL Config**: Use proper OpenSSL configuration files with `[v3_req]` section including Key Usage
+
+### Health Checks
+- **Web Servers**: Use HTTP endpoint checks (e.g., `curl -f http://localhost:3000/srv/status`)
+- **Background Workers**: Use process checks (e.g., `cat /proc/1/cmdline | grep -q sidekiq`)
+- **Alpine Containers**: Use `127.0.0.1` instead of `localhost` in health checks
+- **Start Periods**: Set appropriate `start_period` (60-90s for apps, 10s for nginx)
+
+### Puma Configuration
+- **APP_ROOT**: Must be set to `/var/www/community` (not default `/home/discourse/discourse`)
+- **Port Binding**: Must listen on both Unix socket AND TCP port 3000 for Docker/nginx
+- **Directories**: Entrypoint must create `tmp/sockets`, `tmp/pids`, `log` directories
+
+### Problem-Solving Approach
+- **POC First**: Create isolated POCs in `temp/` folder to identify root causes before applying fixes
+- **Check Logs with Timestamps**: Always use `docker logs --timestamps` for debugging
+- **Verify One Service at a Time**: Fix and verify each service individually
+- **Test Manually**: Test health checks and endpoints manually before relying on Docker health checks

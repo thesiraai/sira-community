@@ -1,0 +1,28 @@
+Production-grade certificate fix and ground rules update
+
+- Fixed ERR_SSL_KEY_USAGE_INCOMPATIBLE by regenerating nginx server certificate
+- Certificate now includes proper Key Usage: Digital Signature, Key Encipherment, Data Encipherment
+- Certificate validated: Extended Key Usage (serverAuth), valid chain, proper purpose
+- Updated nginx configuration to use server certificate (nginx-server.crt) instead of client certificate
+- Disabled SSL stapling (temporary - can be re-enabled with CA chain)
+
+Documentation:
+- Added CERTIFICATE_REGENERATION_SUMMARY.md with complete certificate fix documentation
+- Added SSL_CERTIFICATE_KEY_USAGE_FIX.md with issue analysis
+- Updated HOW_TO_ACCESS.md with certificate fix information
+- Updated DEPLOYMENT_FIXES_SUMMARY.md with certificate regeneration details
+
+Ground Rules:
+- Added SSL/TLS Certificate Rules (Production-Grade) section to COMMUNITY_GROUND_RULES.md
+- Added Certificate Generation (Production-Grade) section to AI-AGENTS.md
+- Updated Common Pitfalls with certificate-related issues
+- Updated Production Readiness Checklist with certificate validation steps
+- Updated Infrastructure Integration Rules with certificate standards
+
+Configuration Files:
+- docker/nginx/nginx.conf - Updated to use nginx-server.crt, disabled SSL stapling
+- docker/docker-compose.sira-community.app.yml - Updated certificate mount path to nginx-community
+- Certs/sira-ca/server/nginx-community/nginx-server.conf - OpenSSL config for certificate generation
+
+All services healthy and production-ready with proper certificate configuration.
+

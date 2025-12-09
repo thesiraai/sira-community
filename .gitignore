@@ -125,3 +125,28 @@ openapi/*
 /plugins/discourse-ai/evals/cases
 /plugins/discourse-ai/evals/log
 /plugins/discourse-ai/config/eval-llms.local.yml
+
+# SIRA Community specific
+# SSL certificates (mounted from infrastructure)
+/docker/nginx/ssl/*
+!/docker/nginx/ssl/.gitkeep
+
+# Temporary work files
+/tmp/*
+!/tmp/.gitkeep
+
+# Log files
+/log/*
+!/log/.gitkeep
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Production configuration (contains secrets)
+/config/discourse.conf
+
+# Docker volumes data
+/docker/nginx/logs/*
+!/docker/nginx/logs/.gitkeep

@@ -1,0 +1,24 @@
+Files to commit:
+
+Modified Files:
+- docker/nginx/nginx.conf
+- docker/docker-compose.sira-community.app.yml
+- COMMUNITY_GROUND_RULES.md
+- AI-AGENTS.md
+- DEPLOYMENT_FIXES_SUMMARY.md
+- HOW_TO_ACCESS.md
+
+New Files:
+- CERTIFICATE_REGENERATION_SUMMARY.md
+- SSL_CERTIFICATE_KEY_USAGE_FIX.md
+- Certs/sira-ca/server/nginx-community/nginx-server.conf
+- GIT_COMMIT_MESSAGE.txt (this file)
+- GIT_COMMIT_FILES.txt (this file)
+
+Certificate Files (regenerated):
+- Certs/sira-ca/server/nginx-community/nginx-server.crt
+- Certs/sira-ca/server/nginx-community/nginx-server.key
+
+Note: Certificate files are in the Certs directory which may be outside the git repository.
+If so, they should be committed separately or documented as external dependencies.
+

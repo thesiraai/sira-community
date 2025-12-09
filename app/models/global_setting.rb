@@ -174,6 +174,33 @@ class GlobalSetting
       hash["variables"][key.to_s] = value
     end
 
+    # SIRA Infrastructure: PostgreSQL SSL/TLS Configuration (mTLS - REQUIRED)
+    # Per infrastructure team: Port 5432 requires mTLS with client certificates
+    # Add SSL mode if configured
+    if db_sslmode.present?
+      hash["sslmode"] = db_sslmode
+    end
+
+    # Add SSL certificates if SSL is required
+    if db_sslmode.present? && (db_sslmode == 'require' || db_sslmode == 'verify-full' || db_sslmode == 'verify-ca')
+      # Get certificate paths from environment variables (set by entrypoint or docker-compose)
+      # Priority: Environment variables (set by entrypoint) > discourse.conf (if registered)
+      ssl_cert = ENV['POSTGRES_SSL_CERT'] || ENV['POSTGRES_CLIENT_CERT']
+      ssl_key = ENV['POSTGRES_SSL_KEY'] || ENV['POSTGRES_CLIENT_KEY']
+      ssl_ca = ENV['POSTGRES_SSL_CA'] || ENV['POSTGRES_CA_FILE']
+
+      # Add SSL parameters if certificates are available
+      if ssl_cert.present? && File.exist?(ssl_cert)
+        hash["sslcert"] = ssl_cert
+      end
+      if ssl_key.present? && File.exist?(ssl_key)
+        hash["sslkey"] = ssl_key
+      end
+      if ssl_ca.present? && File.exist?(ssl_ca)
+        hash["sslrootcert"] = ssl_ca
+      end
+    end
+
     { "production" => hash }
   end
 
@@ -228,6 +255,92 @@ class GlobalSetting
         c[:db] = 1 if Rails.env.test?
         c[:id] = nil if redis_skip_client_commands
         c[:ssl] = true if redis_use_ssl
+
+        # SIRA Infrastructure: Redis TLS with client certificates (mTLS)
+        # Port 6380 requires mutual TLS with client certificates and CA verification
+        # Per APP_TEAM_CONNECTION_GUIDE.md: Port 6380 requires TLS + client certificates
+        # Check if SSL is enabled (redis_use_ssl is set in discourse.conf)
+        # Note: redis_use_ssl may return string "true" or boolean true
+        ssl_enabled = redis_use_ssl == true || redis_use_ssl.to_s.downcase == 'true' ||
+                      (respond_to?(:redis_ssl) && (redis_ssl == true || redis_ssl.to_s.downcase == 'true'))
+        
+        if ssl_enabled
+          # Get certificate paths from discourse.conf or environment variables
+          # These are configured in discourse.conf but need to be accessed via provider
+          cert_path = nil
+          key_path = nil
+          ca_path = nil
+
+          # Prioritize environment variables (set by entrypoint script for writable certs)
+          # These take precedence over discourse.conf to handle read-only volume mounts
+          cert_path = ENV['REDIS_SSL_CERT'] || ENV['REDIS_CLIENT_CERT'] || ENV['REDIS_TLS_CERT']
+          key_path = ENV['REDIS_SSL_KEY'] || ENV['REDIS_CLIENT_KEY'] || ENV['REDIS_TLS_KEY']
+          ca_path = ENV['REDIS_SSL_CA'] || ENV['REDIS_CA_FILE'] || ENV['REDIS_TLS_CA']
+
+          # Fallback to GlobalSetting methods (if registered in discourse.conf)
+          if cert_path.blank? && respond_to?(:redis_ssl_cert) && redis_ssl_cert.present?
+            cert_path = redis_ssl_cert
+          end
+          if key_path.blank? && respond_to?(:redis_ssl_key) && redis_ssl_key.present?
+            key_path = redis_ssl_key
+          end
+          if ca_path.blank? && respond_to?(:redis_ssl_ca) && redis_ssl_ca.present?
+            ca_path = redis_ssl_ca
+          end
+
+          # Add ssl_params if certificates are available
+          # redis-rb gem requires OpenSSL objects for cert/key and file path for ca_file
+          if cert_path.present? && key_path.present? && File.exist?(cert_path) && File.exist?(key_path)
+            begin
+              require 'openssl'
+              
+              # Check file permissions - if not readable, try to read with sudo or copy to temp
+              # This handles read-only volume mounts where files are owned by root
+              cert_content = nil
+              key_content = nil
+              
+              begin
+                cert_content = File.read(cert_path)
+                key_content = File.read(key_path)
+              rescue Errno::EACCES => e
+                # Permission denied - try copying to writable temp location
+                temp_cert_path = "/tmp/redis-client-#{Process.pid}-#{Time.now.to_i}.crt"
+                temp_key_path = "/tmp/redis-client-#{Process.pid}-#{Time.now.to_i}.key"
+                
+                # Copy files using system command (runs as root if needed)
+                system("cp #{cert_path} #{temp_cert_path} && chmod 644 #{temp_cert_path}") if File.exist?(cert_path)
+                system("cp #{key_path} #{temp_key_path} && chmod 600 #{temp_key_path}") if File.exist?(key_path)
+                
+                if File.exist?(temp_cert_path) && File.exist?(temp_key_path)
+                  cert_content = File.read(temp_cert_path)
+                  key_content = File.read(temp_key_path)
+                  # Clean up temp files after reading
+                  File.delete(temp_cert_path) rescue nil
+                  File.delete(temp_key_path) rescue nil
+                else
+                  raise e
+                end
+              end
+              
+              c[:ssl_params] = {
+                cert: OpenSSL::X509::Certificate.new(cert_content),
+                key: OpenSSL::PKey::RSA.new(key_content),
+                verify_mode: OpenSSL::SSL::VERIFY_PEER
+              }
+              # ca_file must be a string path (not OpenSSL object) per redis-rb gem
+              if ca_path.present? && File.exist?(ca_path)
+                c[:ssl_params][:ca_file] = ca_path
+              end
+            rescue => e
+              # Log error but don't fail - allow connection attempt without client certs
+              # This provides graceful degradation if certificates are misconfigured
+              if defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger
+                Rails.logger.error "Failed to load Redis TLS certificates: #{e.message}"
+              end
+              STDERR.puts "WARNING: Redis TLS certificates not loaded: #{e.message}"
+            end
+          end
+        end
 
         c.freeze
       end

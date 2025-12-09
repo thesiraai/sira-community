@@ -1,0 +1,24 @@
+# Ignore actual environment files (contain secrets)
+.env
+.env.*
+!env.example
+!env.local
+!env.dev
+!env.test
+!env.stage
+!env.prod
+!README-ENV.md
+
+# Ignore SSL certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+nginx/ssl/*.cert
+!nginx/ssl/.gitkeep
+
+# Ignore logs
+nginx/logs/*
+!nginx/logs/.gitkeep
+
+
+

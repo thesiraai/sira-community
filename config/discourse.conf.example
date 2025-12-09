@@ -1,0 +1,138 @@
+# SIRA Community Production Configuration
+# Copy this file to config/discourse.conf and configure with your production values
+# This file is used in production mode (RAILS_ENV=production)
+
+# ============================================
+# Database Configuration (PostgreSQL with mTLS)
+# ============================================
+# Connection pool size, sidekiq is set to 5, allowing an extra 3 for bg threads
+db_pool = 8
+
+# Database connection timeout in seconds
+db_connect_timeout = 5
+
+# host address for db server (from infrastructure)
+db_host = postgres
+
+# port running db server
+db_port = 5432
+
+# database name running discourse
+db_name = community_prod
+
+# username accessing database
+db_username = community
+
+# password used to access the db (from environment variable)
+db_password = 
+
+# SSL Configuration for PostgreSQL (mTLS - MANDATORY)
+# Client certificates are required by infrastructure
+db_sslmode = require
+# Note: SSL certificate paths are configured via environment variables:
+# POSTGRES_SSL_CERT=/opt/sira-ai/ssl/postgres/postgres-client.crt
+# POSTGRES_SSL_KEY=/opt/sira-ai/ssl/postgres/postgres-client.key
+# POSTGRES_SSL_CA=/opt/sira-ai/ssl/ca/ca.crt
+
+# Disallow prepared statements
+db_prepared_statements = false
+
+# ============================================
+# Hostname Configuration
+# ============================================
+# hostname running the forum (REQUIRED - change from default)
+hostname = "community.sira.ai"
+
+# backup hostname mainly for cdn use
+backup_hostname = 
+
+# ============================================
+# Redis Configuration (with TLS)
+# ============================================
+# Redis host (from infrastructure)
+redis_host = redis
+
+# Redis port (6380 for TLS, 6379 for non-TLS)
+redis_port = 6380
+
+# Redis password (from environment variable)
+redis_password = 
+
+# Redis SSL/TLS Configuration (MANDATORY for infrastructure)
+redis_ssl = true
+# Note: SSL certificate paths are configured via environment variables:
+# REDIS_SSL_CERT=/opt/sira-ai/ssl/redis/redis-client.crt
+# REDIS_SSL_KEY=/opt/sira-ai/ssl/redis/redis-client.key
+# REDIS_SSL_CA=/opt/sira-ai/ssl/ca/ca.crt
+
+# Redis database number
+redis_db = 0
+
+# ============================================
+# Security Configuration
+# ============================================
+# Secret key base for session encryption (REQUIRED - generate with: ruby -e "require 'securerandom'; puts SecureRandom.hex(64)")
+secret_key_base = 
+
+# ============================================
+# SMTP/Email Configuration
+# ============================================
+# address of smtp server used to send emails
+smtp_address = smtp.sendgrid.net
+
+# port of smtp server used to send emails
+smtp_port = 587
+
+# domain passed to smtp server
+smtp_domain = sira.ai
+
+# username for smtp server
+smtp_user_name = apikey
+
+# password for smtp server
+smtp_password = 
+
+# smtp authentication mechanism
+smtp_authentication = plain
+
+# enable TLS encryption for smtp connections
+smtp_enable_start_tls = true
+
+# mode for verifying smtp server certificates
+smtp_openssl_verify_mode = peer
+
+# ============================================
+# Performance Configuration
+# ============================================
+# Number of unicorn workers
+unicorn_workers = 4
+
+# ============================================
+# CDN Configuration (Optional)
+# ============================================
+# cdn_url = "https://cdn.sira.ai"
+
+# ============================================
+# SIRA Integration
+# ============================================
+# SIRA API URL for integration
+sira_api_url = https://api.sira.ai
+
+# ============================================
+# Security Settings
+# ============================================
+# Force HTTPS
+force_https = true
+
+# Enable rate limiting
+enable_rate_limiting = true
+
+# ============================================
+# Notes
+# ============================================
+# 1. This configuration file is loaded in production mode only
+# 2. Environment variables can override these settings (prepend DISCOURSE_ and uppercase)
+# 3. SSL certificates are MANDATORY for database connections (mTLS)
+# 4. All passwords and secrets should be set via environment variables, not in this file
+# 5. Copy this file to config/discourse.conf and fill in production values
+

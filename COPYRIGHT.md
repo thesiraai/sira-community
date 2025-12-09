@@ -14,9 +14,23 @@ You should have received a copy of the GNU General Public License
 along with this program as the file LICENSE.txt; if not, please see
 http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
 
+## Copyright
+
+SIRA Community is a fork of Discourse, an open-source community platform.
+
+**Original Discourse Code:**
+Copyright 2014 - 2025 Civilized Discourse Construction Kit, Inc.
+
+**SIRA Community Modifications:**
+Copyright 2025 SIRA AI
+
+This work is based on Discourse (https://github.com/discourse/discourse),
+created by Civilized Discourse Construction Kit, Inc. (https://www.discourse.org/).
+
 ## Trademark
 
-Discourse is a registered trademark of Civilized Discourse Construction Kit.
+Discourse, Discourse logo, and "Discourse Forum" are registered trademarks 
+of Civilized Discourse Construction Kit, Inc.
 
 ## Other copyright notices
 

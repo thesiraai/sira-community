@@ -10,7 +10,9 @@ if ENV["RAILS_ENV"] == "production"
   threads 8, 32
 
   # Unless you know what you are changing, do not change them.
+  # Listen on both Unix socket (for local access) and TCP port 3000 (for Docker/nginx)
   bind "unix://#{APP_ROOT}/tmp/sockets/puma.sock"
+  bind "tcp://0.0.0.0:3000"
   stdout_redirect "#{APP_ROOT}/log/puma.log", "#{APP_ROOT}/log/puma.err.log"
   pidfile "#{APP_ROOT}/tmp/pids/puma.pid"
   state_path "#{APP_ROOT}/tmp/pids/puma.state"

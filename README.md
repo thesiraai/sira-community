@@ -1,61 +1,118 @@
-<a href="https://www.discourse.org/">
-  <img src="images/discourse-readme-logo.png" width="300px">
-</a>
+# SIRA Community
 
-The online home for your community. 
+The online home for your community.
 
-<img width="1920" height="1135" alt="github-readme" src="https://github.com/user-attachments/assets/abaaf30f-0cfb-4505-a530-6f8e5a43d24b" />
+SIRA Community is a powerful, open-source community platform built for the SIRA AI ecosystem. It provides comprehensive community features including discussions, real-time chat, user management, moderation tools, and extensive customization options.
 
-> You can self-host Discourse on your own infrastructure. But if you'd rather skip the setup, maintenance, and server management, we offer official Discourse hosting.
->
-> 👉 Learn more about [Discourse hosting](https://discourse.org/pricing)
+> **Note**: SIRA Community is a fork of [Discourse](https://github.com/discourse/discourse), an open-source community platform. We are grateful to the Discourse team and community for their excellent work.
 
-Discourse is a 100% open-source community platform for those who want complete control over how and where their site is run.
-
-Our platform has been battle-tested for over a decade and continues to evolve to meet users’ needs for a powerful community platform. 
-
-**With Discourse, you can:**
+**With SIRA Community, you can:**
 
 * 💬 **Create discussion topics** to foster meaningful conversations.
-
 * ⚡️ **Connect in real-time** with built-in chat.
-  
-* 🎨 **Customize your experience** with an ever-growing selection of official and community themes.
+* 🎨 **Customize your experience** with themes and plugins.
+* 🤖 **Enhance your community** with AI-powered features and integrations.
 
-* 🤖 **Enhance your community** with plugins, from chatbots powered by [Discourse AI](https://meta.discourse.org/t/discourse-ai/259214) to advanced tools like SQL analysis with the [Data Explorer](https://meta.discourse.org/t/discourse-data-explorer/32566) plugin.
+## Quick Start
 
-To learn more, visit [discourse.org](https://www.discourse.org/) and join our support community at [meta.discourse.org](https://meta.discourse.org/).
+### Prerequisites
 
+- Docker and Docker Compose
+- SIRA Infrastructure services running
+- SSL certificates from infrastructure (mTLS required)
+- Domain name (for production)
+- SMTP server credentials (for email)
 
-Here are just a few of the incredible communities using Discourse: 
+### Local Deployment (Production-Grade)
 
-![discourse-communities](https://github.com/user-attachments/assets/a79b5d56-7748-4f6d-8a2d-daa950366fcc)
+For local deployment with **100% production-grade standards** (NO shortcuts):
 
-👉 [Discover more communities using Discourse](https://discover.discourse.org/)
+```bash
+# See README-LOCAL-DEPLOYMENT.md for quick start
+# Or follow: docs/DEPLOYMENT/LOCAL_DEPLOYMENT_GUIDE.md
+```
 
+**Quick commands:**
+```bash
+# Generate secret key
+ruby -e "require 'securerandom'; puts SecureRandom.hex(64)"
+
+# Deploy (after configuring secrets)
+./docker/scripts/deploy-local.sh
+```
+
+### Production Deployment
+
+1. **Configure environment:**
+   ```bash
+   cp docker/env.community.app.prod .env
+   # Edit .env with your production configuration
+   ```
+
+2. **Generate secret key:**
+   ```bash
+   ruby -e "require 'securerandom'; puts SecureRandom.hex(64)"
+   # Add to .env as COMMUNITY_SECRET_KEY_BASE
+   ```
+
+3. **Create production config:**
+   ```bash
+   cp config/discourse.conf.example config/discourse.conf
+   # Edit config/discourse.conf with production values
+   ```
+
+4. **Build and start:**
+   ```bash
+   docker compose -f docker/docker-compose.sira-community.app.yml --env-file docker/env.community.app.prod build
+   docker compose -f docker/docker-compose.sira-community.app.yml --env-file docker/env.community.app.prod up -d
+   ```
+
+5. **Initialize database:**
+   ```bash
+   docker compose -f docker/docker-compose.sira-community.app.yml --env-file docker/env.community.app.prod exec app bundle exec rake db:migrate
+   ```
+
+See `docs/DEPLOYMENT/DOCKER_DEPLOYMENT_GUIDE.md` for detailed deployment instructions.
 
 ## Development
 
-To get your environment set up, follow one of the setup guides:
+### Using Docker (Recommended)
 
-- [Docker / Dev Container](https://meta.discourse.org/t/336366)
-- [macOS](https://meta.discourse.org/t/15772)
-- [Ubuntu/Debian](https://meta.discourse.org/t/14727)
-- [Windows](https://meta.discourse.org/t/75149)
+```bash
+# Start development environment
+bin/docker/boot_dev
 
-Before you get started, ensure you have the following minimum versions: [Ruby 3.3+](https://www.ruby-lang.org/en/downloads/), [PostgreSQL 13](https://www.postgresql.org/download/), [Redis 7](https://redis.io/download).
+# Run commands in container
+bin/docker/exec bundle exec rails console
+bin/docker/exec bundle exec rspec
+```
 
-For more information, check out [the Developer Documentation](https://meta.discourse.org/c/documentation/developer-guides/56).
+### Local Development
 
-## Setting up Discourse
+Before you get started, ensure you have the following minimum versions:
+- [Ruby 3.3+](https://www.ruby-lang.org/en/downloads/)
+- [PostgreSQL 13](https://www.postgresql.org/download/)
+- [Redis 7](https://redis.io/download)
+- [Node.js 20+](https://nodejs.org/)
+- [pnpm 9+](https://pnpm.io/)
 
-If you want to set up a Discourse forum for production use, see our [**Discourse Install Guide**](docs/INSTALL.md).
+```bash
+# Install dependencies
+bundle install
+pnpm install
 
-If you're looking for official hosting, see [discourse.org/pricing](https://www.discourse.org/pricing/).
+# Setup database
+bundle exec rake db:create
+bundle exec rake db:migrate
+bundle exec rake db:seed_fu
+
+# Start development server
+bundle exec rails server
+```
 
 ## Requirements
 
-Discourse supports the **latest, stable releases** of all major browsers and platforms:
+SIRA Community supports the **latest, stable releases** of all major browsers and platforms:
 
 | Browsers              | Tablets      | Phones       |
 | --------------------- | ------------ | ------------ |
@@ -68,45 +125,53 @@ Additionally, we aim to support Safari on iOS 16.4+.
 
 ## Built With
 
-- [Ruby on Rails](https://github.com/rails/rails) &mdash; Our back end API is a Rails app. It responds to requests RESTfully in JSON.
-- [Ember.js](https://github.com/emberjs/ember.js) &mdash; Our front end is an Ember.js app that communicates with the Rails API.
-- [PostgreSQL](https://www.postgresql.org/) &mdash; Our main data store is in Postgres.
-- [Redis](https://redis.io/) &mdash; We use Redis as a cache and for transient data.
-- [BrowserStack](https://www.browserstack.com/) &mdash; We use BrowserStack to test on real devices and browsers.
+- [Ruby on Rails](https://github.com/rails/rails) — Our back end API is a Rails app. It responds to requests RESTfully in JSON.
+- [Ember.js](https://github.com/emberjs/ember.js) — Our front end is an Ember.js app that communicates with the Rails API.
+- [PostgreSQL](https://www.postgresql.org/) — Our main data store is in Postgres.
+- [Redis](https://redis.io/) — We use Redis as a cache and for transient data.
 
-Plus *lots* of Ruby Gems, a complete list of which is at [/main/Gemfile](https://github.com/discourse/discourse/blob/main/Gemfile).
+## Integration with SIRA AI
 
-## Contributing
+SIRA Community is designed to integrate seamlessly with the SIRA AI application. See `docs/INTEGRATION/INTEGRATION_GUIDE.md` for comprehensive integration documentation including:
 
-[![Build Status](https://github.com/discourse/discourse/actions/workflows/tests.yml/badge.svg)](https://github.com/discourse/discourse/actions)
+- REST API integration
+- Single Sign-On (SSO)
+- Webhooks
+- OAuth 2.0
+- Embedding options
 
-Discourse is **100% free** and **open source**. We encourage and support an active, healthy community that
-accepts contributions from the public &ndash; including you!
+## Docker Deployment
 
-Before contributing to Discourse:
+SIRA Community is deployed using Docker for production. See `docs/DEPLOYMENT/DOCKER_DEPLOYMENT_GUIDE.md` for:
 
-1. Please read the complete mission statements on [**discourse.org**](https://www.discourse.org). Yes we actually believe this stuff; you should too.
-2. Read and sign the [**Electronic Discourse Forums Contribution License Agreement**](https://www.discourse.org/cla).
-3. Dig into [**CONTRIBUTING.MD**](CONTRIBUTING.md), which covers submitting bugs, requesting new features, preparing your code for a pull request, etc.
-4. Always strive to collaborate [with mutual respect](https://github.com/discourse/discourse/blob/main/docs/code-of-conduct.md).
-5. Not sure what to work on? [**We've got some ideas.**](https://meta.discourse.org/t/so-you-want-to-help-out-with-discourse/3823)
-
-
-We look forward to seeing your pull requests!
+- Production deployment guide
+- Configuration options
+- Integration with SIRA app ecosystem
+- Maintenance and troubleshooting
 
 ## Security
 
-We take security very seriously at Discourse; all our code is 100% open source and peer reviewed. Please read [our security guide](https://github.com/discourse/discourse/blob/main/docs/SECURITY.md) for an overview of security measures in Discourse, or if you wish to report a security issue.
+We take security very seriously. All code is open source and peer reviewed. Please read our [security guide](docs/SECURITY/SECURITY.md) for an overview of security measures, or if you wish to report a security issue.
 
-Security fixes are listed in the [release notes](https://meta.discourse.org/tags/c/announcements/67/release-notes) for each version.
+## Contributing
 
-## The Discourse Team
+SIRA Community is **100% free** and **open source**. We encourage and support an active, healthy community that accepts contributions from the public.
 
-The original Discourse code contributors can be found in [**AUTHORS.MD**](docs/AUTHORS.md). For a complete list of the many individuals that contributed to the design and implementation of Discourse, please refer to [the official Discourse blog](https://blog.discourse.org/2013/02/the-discourse-team/) and [GitHub's list of contributors](https://github.com/discourse/discourse/contributors).
+Before contributing:
 
-## Copyright / License
+1. Read [**CONTRIBUTING.MD**](CONTRIBUTING.md)
+2. Always strive to collaborate with mutual respect
+3. Follow our code of conduct
 
-Copyright 2014 - 2025 Civilized Discourse Construction Kit, Inc.
+> **Note**: For contributions that would benefit the broader community, we encourage you to also contribute upstream to the [official Discourse repository](https://github.com/discourse/discourse).
+
+## License
+
+SIRA Community is licensed under the GNU General Public License Version 2.0 (or later), 
+inheriting the license from Discourse.
+
+Copyright 2014 - 2025 Civilized Discourse Construction Kit, Inc. (original Discourse code)
+Copyright 2025 SIRA AI (SIRA Community modifications and additions)
 
 Licensed under the GNU General Public License Version 2.0 (or later);
 you may not use this work except in compliance with the License.
@@ -120,17 +185,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Discourse logo and “Discourse Forum” ®, Civilized Discourse Construction Kit, Inc.
+Discourse logo and "Discourse Forum" ® are trademarks of Civilized Discourse Construction Kit, Inc.
+
+## Credits and Acknowledgments
+
+SIRA Community is based on [Discourse](https://github.com/discourse/discourse), a powerful open-source community platform created by [Civilized Discourse Construction Kit, Inc.](https://www.discourse.org/).
+
+We extend our sincere gratitude to:
+
+- **The Discourse Team** - For creating and maintaining an exceptional community platform
+- **The Discourse Community** - For their contributions, feedback, and support over the years
+- **All Discourse Contributors** - For their code contributions, bug reports, and feature suggestions
+
+Discourse has been battle-tested for over a decade and continues to evolve. SIRA Community builds upon this solid foundation to provide integrated community functionality for the SIRA AI ecosystem.
+
+### Original Discourse Resources
+
+- **Official Website**: [discourse.org](https://www.discourse.org/)
+- **Source Code**: [github.com/discourse/discourse](https://github.com/discourse/discourse)
+- **Community Forum**: [meta.discourse.org](https://meta.discourse.org/)
+- **Documentation**: [docs.discourse.org](https://docs.discourse.org/)
 
 ## Accessibility
 
-To guide our ongoing effort to build accessible software we follow the [W3C’s Web Content Accessibility Guidelines (WCAG)](https://www.w3.org/TR/WCAG21/). If you'd like to report an accessibility issue that makes it difficult for you to use Discourse, email accessibility@discourse.org. For more information visit [discourse.org/accessibility](https://discourse.org/accessibility).
-
-## Dedication
-
-Discourse is built with [love, Internet style.](https://www.youtube.com/watch?v=Xe1TZaElTAs)
-
-For over a decade, our [amazing community](https://meta.discourse.org/) has helped shape Discourse into what it is today. Your support, feedback, and contributions have been invaluable in making Discourse a powerful and versatile platform.
-
-We’re deeply grateful for every feature request, bug report, and discussion that has driven Discourse forward. Thank you for being a part of this journey—we couldn’t have done it without you!
-
+To guide our ongoing effort to build accessible software we follow the [W3C's Web Content Accessibility Guidelines (WCAG)](https://www.w3.org/TR/WCAG21/). If you'd like to report an accessibility issue, please open an issue on GitHub.
