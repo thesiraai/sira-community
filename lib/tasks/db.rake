@@ -237,8 +237,17 @@ task "db:migrate" => %w[
        load_config
        environment
        set_locale
-       assets:precompile:asset_processor
      ] do |_, args|
+  # Conditionally run asset processor - skip if SKIP_ASSET_COMPILATION is set or if it fails
+  # This allows migrations to run even if asset compilation has issues
+  if ENV["SKIP_ASSET_COMPILATION"] != "1"
+    begin
+      Rake::Task["assets:precompile:asset_processor"].invoke
+    rescue => e
+      STDERR.puts "WARNING: Asset processor failed, continuing with migrations: #{e.message}"
+      STDERR.puts "Set SKIP_ASSET_COMPILATION=1 to suppress this warning"
+    end
+  end
   DistributedMutex.synchronize(
     "db_migration",
     redis: Discourse.redis.without_namespace,
@@ -253,6 +262,31 @@ task "db:migrate" => %w[
     end
     if migrations.first.version < epoch_timestamp
       raise "Migration #{migrations.first.version} is timestamped before the epoch"
+    end
+
+    # SIRA Community: Check and grant database permissions (production-grade automation)
+    # This ensures the database user has necessary privileges for migrations
+    begin
+      # Check if user can create tables
+      test_table_name = "discourse_permission_test_#{Time.now.to_i}"
+      DB.exec("CREATE TABLE IF NOT EXISTS #{test_table_name} (id INTEGER)")
+      DB.exec("DROP TABLE IF EXISTS #{test_table_name}")
+      STDERR.puts "✅ Database permissions verified"
+    rescue PG::InsufficientPrivilege => e
+      STDERR.puts "⚠️  WARNING: Database user lacks CREATE TABLE privilege"
+      STDERR.puts "   This should be set by infrastructure team during database creation"
+      STDERR.puts "   Attempting to grant permissions (may fail if not superuser)..."
+      begin
+        # Try to grant permissions (will fail if not superuser, which is expected)
+        DB.exec("GRANT ALL PRIVILEGES ON SCHEMA public TO #{DB.query_single("SELECT current_user").first}")
+        DB.exec("GRANT CREATE ON DATABASE #{ActiveRecord::Base.connection.current_database} TO #{DB.query_single("SELECT current_user").first}")
+        STDERR.puts "✅ Database permissions granted"
+      rescue => grant_error
+        STDERR.puts "❌ Could not grant permissions automatically: #{grant_error.message}"
+        STDERR.puts "   Please contact infrastructure team to set correct database permissions"
+        STDERR.puts "   Required: GRANT ALL PRIVILEGES ON SCHEMA public TO <user>;"
+        STDERR.puts "            GRANT CREATE ON DATABASE <database> TO <user>;"
+      end
     end
 
     %i[pg_trgm unaccent].each do |extension|

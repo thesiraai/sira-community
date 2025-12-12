@@ -5,3 +5,5 @@
 cd /var/www/community
 bundle exec rails runner temp/test_redis_tls_runner.rb
 
+
+

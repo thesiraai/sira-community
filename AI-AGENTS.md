@@ -122,6 +122,27 @@ ALWAYS lint any changes you make
 - **Network**: Services must be on `sira_infra_network` to access infrastructure services
 - **Ports**: Use internal ports (5432 for PostgreSQL, 6380 for Redis TLS) not external ports (5433)
 
+### Asset Processor Build (CRITICAL - Production Requirement)
+- **MUST be built during Docker build**: Asset processor (`tmp/asset-processor.js`) must be created during Docker build, not at runtime
+- **Dependencies**: Install `pnpm install` in `frontend/asset-processor/` before building
+- **Build Process**: `rake assets:precompile:asset_processor` runs during Docker build
+- **Verification**: Dockerfile MUST verify `tmp/asset-processor.js` exists after build (fail if missing)
+- **Runtime Fallback**: Entrypoint script attempts build if missing (safety net only, not primary method)
+- **Why Critical**: Prevents 500 errors, faster startup, no runtime Node.js dependency for asset processing
+
+### Automated Deployment
+- **Primary Method**: Use `docker/build-and-deploy.sh` for automated deployment
+- **Features**: Pre-flight checks, health checks, error handling, comprehensive logging
+- **BuildKit**: Always use `DOCKER_BUILDKIT=1` for optimized builds
+- **Manual Method**: `docker compose build && docker compose up -d` (fallback only)
+
+### Security & Performance
+- **Non-Root User**: Application MUST run as `community` user (UID 1000), never as root
+- **Security Hardening**: Use `--no-install-recommends`, minimal base image, strict file permissions
+- **Performance**: YJIT enabled, connection pooling optimized (40 connections), threads optimized (8-12)
+- **Resource Limits**: CPU and memory limits configured in docker-compose
+- **Health Checks**: All services have health checks configured
+
 ### Certificate Management
 - **Read-Only Mounts**: Certificates mounted from host are read-only and root-owned
 - **Entrypoint Script**: Must run as root to copy certificates to writable location (`/var/www/community/tmp/ssl/`)

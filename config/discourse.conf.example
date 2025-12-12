@@ -136,3 +136,5 @@ enable_rate_limiting = true
 # 4. All passwords and secrets should be set via environment variables, not in this file
 # 5. Copy this file to config/discourse.conf and fill in production values
 
+
+

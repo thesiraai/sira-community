@@ -255,3 +255,5 @@ echo "Stop services:"
 echo "  docker compose -f docker/docker-compose.sira-community.app.yml --env-file docker/env.community.app.local down"
 echo ""
 
+
+

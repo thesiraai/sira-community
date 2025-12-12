@@ -27,8 +27,8 @@ DEPLOYMENT_*.md
 DOCKER_*.md
 INTEGRATION_GUIDE.md
 *.md
-spec/
-test/
+# spec/ - Commented out: needed for tests in runtime stage
+# test/ - Commented out: needed for tests in runtime stage
 .github/
 docs/INSTALL*.md
 docs/ADMIN*.md

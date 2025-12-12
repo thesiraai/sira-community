@@ -211,3 +211,5 @@ docker exec sira-community-nginx wget -q -O- http://127.0.0.1/health
 docker exec sira-community-sidekiq sh -c "cat /proc/1/cmdline | grep -q sidekiq && echo 'OK'"
 ```
 
+
+

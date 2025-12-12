@@ -1,0 +1,86 @@
+# SIRA Community .dockerignore
+# Optimize Docker build by excluding unnecessary files
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+log/
+tmp/log/
+
+# Temporary files
+tmp/*
+!tmp/.gitkeep
+!tmp/ssl/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test files
+spec/
+test/
+coverage/
+
+# Development files
+docker-compose*.yml
+!docker-compose.sira-community.app.yml
+docker/
+!docker/docker-compose.sira-community.app.yml
+!docker/build-and-deploy.sh
+!docker/env.community.app.local
+
+# Build artifacts (will be generated during build)
+public/assets/
+public/plugins/
+public/fonts/
+
+# Node modules (will be installed during build)
+node_modules/
+.pnpm-store/
+
+# Ruby gems (will be installed during build)
+vendor/bundle/
+
+# Database
+*.sqlite3
+*.sql
+*.sql.gz
+
+# Backups
+public/backups/
+public/csv/
+
+# Uploads (mounted as volume)
+public/uploads/
+
+# SSL certificates (mounted as volume)
+docker/nginx/ssl/*
+!docker/nginx/ssl/.gitkeep
+
+# Deployment logs
+deploy.log
+*.log
+
+
+

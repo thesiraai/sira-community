@@ -8,7 +8,8 @@ Discourse::Application.configure do
   config.eager_load = true
 
   # Full error reports are disabled and caching is turned on
-  config.consider_all_requests_local = false
+  # Temporarily enable detailed errors for debugging
+  config.consider_all_requests_local = ENV["ENABLE_DETAILED_ERRORS"] == "true" || false
   config.action_controller.perform_caching = true
 
   # Disable Rails's static asset server (Apache or nginx will already do this)
@@ -17,7 +18,8 @@ Discourse::Application.configure do
   config.assets.js_compressor = :uglifier
 
   # stuff should be pre-compiled
-  config.assets.compile = false
+  # Temporarily enable asset compilation at runtime if assets are missing
+  config.assets.compile = ENV["ENABLE_ASSET_COMPILATION"] == "true" || false
 
   # Generate digests for assets URLs
   config.assets.digest = true

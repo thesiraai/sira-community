@@ -118,3 +118,5 @@ PG.connect(
 2. `app/models/global_setting.rb` - Added SSL parameters to `database_config`
 3. `docker/docker-compose.sira-community.app.yml` - Fixed certificate paths
 
+
+

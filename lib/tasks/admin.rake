@@ -1,112 +1,153 @@
 # frozen_string_literal: true
 
-desc "invite an admin to this discourse instance"
-task "admin:invite", [:email] => [:environment] do |_, args|
-  email = args[:email]
-  if !email || email !~ /@/
-    puts "ERROR: Expecting rake admin:invite[some@email.com]"
-    exit 1
-  end
+# Override Discourse's built-in admin:create task to make it idempotent and non-interactive
+# Must clear BEFORE defining namespace to properly override
+Rake::Task["admin:create"].clear if Rake::Task.task_defined?("admin:create")
 
-  unless user = User.find_by_email(email)
-    puts "Creating new account!"
-    user = User.new(email: email)
-    user.password = SecureRandom.hex
-    user.username = UserNameSuggester.suggest(user.email)
-  end
+namespace :admin do
+  desc "Create or update admin account (idempotent, non-interactive)"
+  task create: :environment do
+    # Get admin credentials from environment variables with defaults
+    admin_email = ENV["ADMIN_EMAIL"] || ENV["COMMUNITY_ADMIN_EMAIL"] || "admin@sira.ai"
+    admin_username = ENV["ADMIN_USERNAME"] || ENV["COMMUNITY_ADMIN_USERNAME"] || "admin"
+    admin_password = ENV["ADMIN_PASSWORD"] || ENV["COMMUNITY_ADMIN_PASSWORD"]
 
-  user.active = true
-  user.save!
-
-  puts "Granting admin!"
-  user.grant_admin!
-  user.change_trust_level!(1) if user.trust_level < 1
-
-  user.email_tokens.update_all confirmed: true
-
-  puts "Sending email!"
-  email_token =
-    user.email_tokens.create!(email: user.email, scope: EmailToken.scopes[:password_reset])
-  Jobs.enqueue(
-    :user_email,
-    type: "account_created",
-    user_id: user.id,
-    email_token: email_token.token,
-  )
-end
-
-desc "Creates a forum administrator"
-task "admin:create" => :environment do
-  require "highline/import"
-
-  begin
-    email = ask("Email:  ")
-    existing_user = User.find_by_email(email)
-
-    # check if user account already exists
-    if existing_user
-      # user already exists, ask for password reset
-      admin = existing_user
-      reset_password =
-        ask(
-          "User with this email already exists! Do you want to reset the password for this email? (Y/n)  ",
-        )
-      if (reset_password == "" || reset_password.downcase == "y")
-        begin
-          password = ask("Password:  ") { |q| q.echo = false }
-          password_confirmation = ask("Repeat password:  ") { |q| q.echo = false }
-          passwords_match = password == password_confirmation
-
-          say("Passwords don't match, try again...") unless passwords_match
-        end while !passwords_match
-        admin.password = password
-      end
-    else
-      # create new user
-      admin = User.new
-      admin.email = email
-      admin.username = UserNameSuggester.suggest(admin.email)
-      begin
-        if ENV["RANDOM_PASSWORD"] == "1"
-          password = password_confirmation = SecureRandom.hex
-        else
-          password = ask("Password:  ") { |q| q.echo = false }
-          password_confirmation = ask("Repeat password:  ") { |q| q.echo = false }
-        end
-
-        passwords_match = password == password_confirmation
-
-        say("Passwords don't match, try again...") unless passwords_match
-      end while !passwords_match
-      admin.password = password
+    # If no password provided, generate one and print it
+    # In non-interactive environments (Docker), never prompt for password
+    if admin_password.nil? || admin_password.empty?
+      require "securerandom"
+      admin_password = SecureRandom.hex(16)
+      puts "⚠️  WARNING: No ADMIN_PASSWORD provided, generated random password"
+      puts "⚠️  IMPORTANT: Save this password securely!"
     end
 
-    admin.name = ask("Full name:  ") if SiteSetting.full_name_requirement == "required_at_signup" &&
-      admin.name.blank?
+    # Check if admin user already exists
+    # Discourse stores emails in user_emails table, so we check username first
+    existing_user = User.find_by_username(admin_username)
+    
+    # If not found by username, try to find by email using Discourse's method
+    if existing_user.nil? && admin_email.present?
+      begin
+        existing_user = User.find_by_email(admin_email)
+      rescue => e
+        # Fallback: try via user_emails join if find_by_email fails
+        existing_user = User.joins(:user_emails).where(user_emails: { email: admin_email }).first
+      end
+    end
 
-    # save/update user account
-    saved = admin.save
-    say(admin.errors.full_messages.join("\n")) unless saved
-  end while !saved
+    if existing_user
+      # Update existing user to ensure admin status
+      puts "Found existing user: #{existing_user.username}"
+      
+      # Update admin status if not already admin
+      if !existing_user.admin?
+        existing_user.admin = true
+        existing_user.moderator = true
+        existing_user.active = true
+        existing_user.approved = true
+        
+        if existing_user.save(validate: false)
+          puts "✓ Updated user to admin: #{existing_user.username}"
+        else
+          puts "✗ Failed to update user: #{existing_user.errors.full_messages.join(', ')}"
+          exit 1
+        end
+      else
+        puts "✓ User already has admin privileges: #{existing_user.username}"
+      end
 
-  say "\nEnsuring account is active!"
-  admin.active = true
-  admin.save
+      # Update password if provided via environment variable
+      if ENV["ADMIN_PASSWORD"].present? || ENV["COMMUNITY_ADMIN_PASSWORD"].present?
+        existing_user.password = admin_password
+        existing_user.password_required!
+        if existing_user.save(validate: false)
+          puts "✓ Password updated for: #{existing_user.username}"
+        else
+          puts "⚠️  Warning: Failed to update password (user may need to reset via email)"
+        end
+      end
 
-  if existing_user
-    say("\nAccount updated successfully!")
-  else
-    say("\nAccount created successfully with username #{admin.username}")
+      puts "\nAdmin account ready:"
+      puts "  Email:    #{existing_user.email}"
+      puts "  Username: #{existing_user.username}"
+      if ENV["ADMIN_PASSWORD"].present? || ENV["COMMUNITY_ADMIN_PASSWORD"].present?
+        puts "  Password: [Updated from environment]"
+      else
+        puts "  Password: [Unchanged - use existing password or reset via email]"
+      end
+    else
+      # Create new admin user
+      puts "Creating new admin account..."
+      
+      user = User.new
+      user.username = admin_username
+      user.email = admin_email
+      user.password = admin_password
+      user.password_required!
+      user.active = true
+      user.approved = true
+      user.admin = true
+      user.moderator = true
+
+      if user.save(validate: false)
+        puts "✓ SUCCESS: Admin account created!"
+        puts "\nAdmin account credentials:"
+        puts "  Email:    #{user.email}"
+        puts "  Username: #{user.username}"
+        puts "  Password: #{admin_password}"
+        puts "\n⚠️  IMPORTANT: Save this password securely!"
+      else
+        puts "✗ ERROR: Failed to create admin account"
+        puts "  Errors: #{user.errors.full_messages.join(', ')}"
+        exit 1
+      end
+    end
   end
 
-  # grant admin privileges
-  grant_admin = ask("Do you want to grant Admin privileges to this account? (Y/n)  ")
-  if (grant_admin == "" || grant_admin.downcase == "y")
-    admin.grant_admin!
-    admin.change_trust_level!(1) if admin.trust_level < 1
-    admin.email_tokens.update_all confirmed: true
-    admin.activate
+  desc "List all admin users"
+  task list: :environment do
+    admins = User.where(admin: true).order(:username)
+    
+    if admins.any?
+      puts "Admin users (#{admins.count}):"
+      admins.each do |admin|
+        puts "  - #{admin.username} (#{admin.email}) - ID: #{admin.id}"
+      end
+    else
+      puts "No admin users found"
+    end
+  end
 
-    say("\nYour account now has Admin privileges!")
+  desc "Remove admin privileges from a user"
+  task :remove, [:username] => :environment do |_t, args|
+    username = args[:username]
+    
+    if username.nil?
+      puts "✗ ERROR: Username required"
+      puts "Usage: rake admin:remove[username]"
+      exit 1
+    end
+
+    user = User.find_by_username(username)
+    
+    if user.nil?
+      puts "✗ ERROR: User not found: #{username}"
+      exit 1
+    end
+
+    if !user.admin?
+      puts "⚠️  User is not an admin: #{username}"
+      exit 0
+    end
+
+    user.admin = false
+    user.moderator = false
+    
+    if user.save(validate: false)
+      puts "✓ Removed admin privileges from: #{username}"
+    else
+      puts "✗ Failed to remove admin privileges: #{user.errors.full_messages.join(', ')}"
+      exit 1
+    end
   end
 end

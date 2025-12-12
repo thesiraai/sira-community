@@ -50,3 +50,5 @@ Once the working configuration is identified:
 2. Update `app/models/global_setting.rb` or database connection code
 3. Verify the fix works in the application
 
+
+

@@ -48,6 +48,7 @@ esbuild
     logLevel: "warning",
     bundle: true,
     minify: false,
+    platform: "node", // Required for Node.js built-in modules (node:buffer, node:path, etc.)
     alias: {
       path: "path-browserify",
       url: "./url-polyfill",
@@ -63,7 +64,9 @@ esbuild
     define: {
       "import.meta.url": "'http://example.com'",
     },
-    external: [],
+    external: [
+      "@babel/preset-typescript/package.json", // External to avoid bundling issues
+    ],
     entryPoints: ["./transpiler.js"],
     plugins: [wasmPlugin],
   })

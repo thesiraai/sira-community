@@ -145,3 +145,5 @@ GlobalSetting.register(:redis_ssl_ca, nil)
 
 This is a **custom requirement** for SIRA infrastructure that Discourse doesn't handle out-of-the-box.
 
+
+

@@ -21,6 +21,12 @@ class GlobalSetting
   # - skips caching generated token to redis if redis is skipped
   # - enforce rules about token format falling back to redis if needed
   def self.safe_secret_key_base
+    # Reset Redis config cache if it was created before provider was configured
+    # This ensures environment variables are used in test/Docker environments
+    if Rails.env.test? && @config && redis_config[:host] == "localhost"
+      reset_redis_config!
+    end
+
     if @safe_secret_key_base && @token_in_redis &&
          (@token_last_validated + REDIS_VALIDATE_SECONDS) < Time.now
       @token_last_validated = Time.now
@@ -50,26 +56,48 @@ class GlobalSetting
         end
         token
       end
-  rescue Redis::ReadOnlyError
+  rescue Redis::ReadOnlyError, Redis::CannotConnectError, RedisClient::CannotConnectError, Errno::ECONNREFUSED
+    # If Redis connection fails, generate token without Redis
+    # This allows Rails to initialize even if Redis is temporarily unavailable
     @safe_secret_key_base = SecureRandom.hex(64)
   end
 
   def self.load_defaults
     default_provider =
       FileProvider.from(File.expand_path("../../../config/discourse_defaults.conf", __FILE__))
-    default_provider
-      .keys
-      .concat(@provider.keys)
+    # Ensure @provider is initialized (may be nil during asset precompilation)
+    @provider ||= EnvProvider.new
+    # Handle case where default_provider might be nil
+    default_keys = default_provider ? default_provider.keys : []
+    provider_keys = @provider ? @provider.keys : []
+    (default_keys + provider_keys)
       .uniq
       .each do |key|
-        default = default_provider.lookup(key, nil)
+        default = default_provider ? default_provider.lookup(key, nil) : nil
 
         instance_variable_set("@#{key}_cache", nil)
 
         define_singleton_method(key) do
           val = instance_variable_get("@#{key}_cache")
           if val.nil?
-            val = provider.lookup(key, default)
+            # In test environment, prioritize environment variables for database config
+            if Rails.env.test?
+              env_val = case key
+              when :db_hostname, :db_host
+                ENV["DISCOURSE_DB_HOSTNAME"]
+              when :db_port
+                ENV["DISCOURSE_DB_PORT"]
+              when :db_name
+                ENV["DISCOURSE_DB_NAME"]
+              when :db_username, :db_user
+                ENV["DISCOURSE_DB_USERNAME"]
+              when :db_password
+                ENV["DISCOURSE_DB_PASSWORD"]
+              end
+              val = env_val if env_val.present?
+            end
+            # Fall back to provider lookup if no env var found
+            val = provider.lookup(key, default) if val.nil?
             val = :missing if val.nil?
             instance_variable_set("@#{key}_cache", val)
           end
@@ -143,7 +171,19 @@ class GlobalSetting
       replica_host
       replica_port
     ].each do |s|
-      if val = self.public_send("db_#{s}")
+      # In test environment, prioritize environment variables for host/port/username/password
+      if Rails.env.test? && s == "host"
+        val = ENV["DISCOURSE_DB_HOSTNAME"] || self.public_send("db_#{s}")
+      elsif Rails.env.test? && s == "port"
+        val = ENV["DISCOURSE_DB_PORT"] || self.public_send("db_#{s}")
+      elsif Rails.env.test? && s == "username"
+        val = ENV["DISCOURSE_DB_USERNAME"] || self.public_send("db_#{s}")
+      elsif Rails.env.test? && s == "password"
+        val = ENV["DISCOURSE_DB_PASSWORD"] || self.public_send("db_#{s}")
+      else
+        val = self.public_send("db_#{s}")
+      end
+      if val && val != :missing && val.to_s.present?
         hash[s] = val
       end
     end
@@ -176,13 +216,14 @@ class GlobalSetting
 
     # SIRA Infrastructure: PostgreSQL SSL/TLS Configuration (mTLS - REQUIRED)
     # Per infrastructure team: Port 5432 requires mTLS with client certificates
-    # Add SSL mode if configured
-    if db_sslmode.present?
-      hash["sslmode"] = db_sslmode
+    # Add SSL mode if configured (handle case where method doesn't exist during asset precompilation)
+    db_sslmode_val = respond_to?(:db_sslmode) ? db_sslmode : nil
+    if db_sslmode_val.present?
+      hash["sslmode"] = db_sslmode_val
     end
 
     # Add SSL certificates if SSL is required
-    if db_sslmode.present? && (db_sslmode == 'require' || db_sslmode == 'verify-full' || db_sslmode == 'verify-ca')
+    if db_sslmode_val.present? && (db_sslmode_val == 'require' || db_sslmode_val == 'verify-full' || db_sslmode_val == 'verify-ca')
       # Get certificate paths from environment variables (set by entrypoint or docker-compose)
       # Priority: Environment variables (set by entrypoint) > discourse.conf (if registered)
       ssl_cert = ENV['POSTGRES_SSL_CERT'] || ENV['POSTGRES_CLIENT_CERT']
@@ -238,8 +279,26 @@ class GlobalSetting
     @config ||=
       begin
         c = {}
-        c[:host] = redis_host if redis_host
-        c[:port] = redis_port if redis_port
+        # In test environment, prioritize environment variables over config file
+        # This ensures Docker service names are used instead of localhost
+        host = if Rails.env.test?
+          ENV["DISCOURSE_REDIS_HOST"] || redis_host
+        else
+          redis_host
+        end
+        port = if Rails.env.test?
+          ENV["DISCOURSE_REDIS_PORT"] || redis_port
+        else
+          redis_port
+        end
+        password = if Rails.env.test?
+          ENV["DISCOURSE_REDIS_PASSWORD"] || ENV["REDIS_PASSWORD"] || redis_password
+        else
+          redis_password
+        end
+        c[:host] = host if host
+        c[:port] = port if port
+        c[:password] = password if password.present?
 
         if get_redis_replica_host && get_redis_replica_port && defined?(RailsFailover)
           c[:client_implementation] = RailsFailover::Redis::Client
@@ -470,8 +529,40 @@ class GlobalSetting
 
   class BlankProvider < BaseProvider
     def lookup(key, default)
+      # In test environment, read config from environment variables
+      # Redis configuration
       if key == :redis_port
         return ENV["DISCOURSE_REDIS_PORT"] if ENV["DISCOURSE_REDIS_PORT"]
+      end
+      if key == :redis_host
+        return ENV["DISCOURSE_REDIS_HOST"] if ENV["DISCOURSE_REDIS_HOST"]
+      end
+      if key == :redis_password
+        return ENV["DISCOURSE_REDIS_PASSWORD"] if ENV["DISCOURSE_REDIS_PASSWORD"]
+      end
+      if key == :redis_use_ssl
+        # Check if SSL is enabled via environment or port (6380 = SSL)
+        if ENV["DISCOURSE_REDIS_PORT"] == "6380" || ENV["REDIS_PORT"] == "6380"
+          return true
+        end
+        return ENV["DISCOURSE_REDIS_USE_SSL"] if ENV["DISCOURSE_REDIS_USE_SSL"]
+      end
+      # Database configuration
+      # Note: discourse_defaults.conf uses db_hostname, but database_config uses db_host
+      if key == :db_hostname || key == :db_host
+        return ENV["DISCOURSE_DB_HOSTNAME"] if ENV["DISCOURSE_DB_HOSTNAME"]
+      end
+      if key == :db_port
+        return ENV["DISCOURSE_DB_PORT"] if ENV["DISCOURSE_DB_PORT"]
+      end
+      if key == :db_name
+        return ENV["DISCOURSE_DB_NAME"] if ENV["DISCOURSE_DB_NAME"]
+      end
+      if key == :db_username || key == :db_user
+        return ENV["DISCOURSE_DB_USERNAME"] if ENV["DISCOURSE_DB_USERNAME"]
+      end
+      if key == :db_password
+        return ENV["DISCOURSE_DB_PASSWORD"] if ENV["DISCOURSE_DB_PASSWORD"]
       end
       default
     end

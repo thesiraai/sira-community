@@ -42,3 +42,5 @@ The POC runs 5 different connection configurations:
 
 One of these tests should succeed, identifying the correct configuration format for the redis-rb gem with TLS and client certificates.
 
+
+

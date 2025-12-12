@@ -144,3 +144,5 @@ The infrastructure Redis server **requires mutual TLS (mTLS)**:
 
 The current application code only enables TLS but doesn't provide the certificates needed for mTLS, which is why it fails.
 
+
+

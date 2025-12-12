@@ -1,7 +1,7 @@
 # SIRA Community Ground Rules
 
-**Last Updated:** December 9, 2025  
-**Status:** Production-Ready Deployment
+**Last Updated:** December 11, 2025  
+**Status:** Production-Ready Deployment with Automated Build & Security Hardening
 
 ## Overview
 
@@ -168,6 +168,11 @@ This document contains ground rules specific to the SIRA Community application d
 - [ ] Health checks configured for all services
 - [ ] APP_ROOT set for Puma
 - [ ] Required directories created by entrypoint
+- [ ] **Asset processor dependencies installed** (`pnpm install` in `frontend/asset-processor/`)
+- [ ] **Asset processor built during Docker build** (verify `tmp/asset-processor.js` exists in image)
+- [ ] **Docker BuildKit enabled** (`DOCKER_BUILDKIT=1`)
+- [ ] **Security hardening applied** (non-root user, minimal image, file permissions)
+- [ ] **Performance optimizations enabled** (YJIT, connection pooling, thread optimization)
 
 ### After Deployment
 - [ ] All services show "healthy" status
@@ -176,6 +181,10 @@ This document contains ground rules specific to the SIRA Community application d
 - [ ] Services can communicate (nginx → app, app → postgres, app → redis)
 - [ ] **No SSL certificate errors in browser** (no `ERR_SSL_KEY_USAGE_INCOMPATIBLE`)
 - [ ] **HTTPS connection works** (test in Chrome, Edge, Firefox)
+- [ ] **Asset processor exists** (`ls -lh /var/www/community/tmp/asset-processor.js`)
+- [ ] **No 500 errors on page load** (test root path `/`)
+- [ ] **Application responds quickly** (< 1 second for health check)
+- [ ] **Resource usage within limits** (check `docker stats`)
 
 ---
 
@@ -191,6 +200,14 @@ This document contains ground rules specific to the SIRA Community application d
 8. **Missing "Digital Signature" in certificate Key Usage** → `ERR_SSL_KEY_USAGE_INCOMPATIBLE` browser error
 9. **Using client certificates as server certificates** → Certificate type mismatch errors
 10. **Not verifying certificate Key Usage after generation** → Browser compatibility issues
+11. **Asset processor not built during Docker build** → 500 errors on page load, slow startup
+12. **Missing asset-processor dependencies** → Build failures during Docker build
+13. **Not using BuildKit** → Slower builds, less efficient caching
+14. **Running as root user** → Security vulnerability
+15. **Not setting resource limits** → Resource exhaustion, poor performance
+16. **Skipping health checks** → No visibility into service status
+17. **Not verifying asset processor after build** → Runtime failures
+18. **Including unnecessary files in Docker image** → Larger images, slower builds
 
 ---
 
@@ -230,8 +247,64 @@ This document contains ground rules specific to the SIRA Community application d
   - If `ERR_SSL_KEY_USAGE_INCOMPATIBLE` appears, verify certificate has "Digital Signature" in Key Usage
   - Always verify certificate Key Usage, Extended Key Usage, and certificate chain before deployment
 
+## Docker Build & Deployment Rules (Production-Grade)
+
+### Asset Processor Build (CRITICAL)
+- **MUST be built during Docker build**, not at runtime
+- **Dependencies**: Install `pnpm install` in `frontend/asset-processor/` before building
+- **Build Process**: `rake assets:precompile:asset_processor` runs during Docker build
+- **Verification**: Dockerfile verifies `tmp/asset-processor.js` exists after build (fails if missing)
+- **Runtime Fallback**: Entrypoint script attempts build if missing (safety net only)
+- **Why**: Prevents 500 errors, faster startup, no runtime Node.js dependency
+
+### Automated Deployment
+- **Primary Method**: Use `docker/build-and-deploy.sh` for automated deployment
+- **Features**: Pre-flight checks, health checks, error handling, logging
+- **Manual Method**: `docker compose build && docker compose up -d` (fallback)
+- **BuildKit**: Always use `DOCKER_BUILDKIT=1` for optimized builds
+
+### Dockerfile Best Practices
+- **Layer Caching**: Dependencies installed before application code
+- **Security**: Use `--no-install-recommends` to reduce attack surface
+- **Asset Precompilation**: Assets compiled during build, not runtime
+- **Non-Root User**: Application runs as `community` user (UID 1000)
+- **File Permissions**: Strict permissions (`u=rwX,g=rX,o=`)
+- **Build Tools**: Keep build-essential for native gem compilation (or use multi-stage build)
+
+### Build Optimization
+- **BuildKit**: Enable for faster, more efficient builds
+- **.dockerignore**: Exclude unnecessary files (docs, tests, .git, etc.)
+- **Layer Ordering**: Copy dependency files first, then application code
+- **Asset Processor**: Build before main asset precompilation
+
+### Security Hardening
+- **Non-Root Execution**: All services run as non-root user
+- **Minimal Base Image**: Use `ruby:3.3-slim` (Debian-based, minimal)
+- **File Permissions**: Lock down file permissions
+- **Certificate Security**: Certificates with restricted permissions (644 for certs, 600 for keys)
+- **Resource Limits**: CPU and memory limits configured in docker-compose
+- **Health Checks**: All services have health checks configured
+
+### Performance Optimizations
+- **YJIT**: Enabled for Ruby JIT compilation (`DISCOURSE_ENABLE_YJIT: "true"`)
+- **Connection Pooling**: Database pool size optimized (40 connections)
+- **Thread Optimization**: Puma threads reduced to 8-12 (from 8-32)
+- **Log Level**: Reduced to `warn` for production (from `info`)
+- **Asset Precompilation**: All assets compiled at build time
+- **Connection Timeout**: Reduced to 2 seconds (from 5)
+
+### Entrypoint Script Enhancements
+- **Asset Processor Check**: Verifies `tmp/asset-processor.js` exists at startup
+- **Runtime Build Fallback**: Attempts to build if missing (requires pnpm/dependencies)
+- **Error Handling**: Graceful handling of missing dependencies
+- **Certificate Management**: Copies certificates from read-only mounts
+
 ## Reference Documents
 
+- `docker/DEPLOYMENT.md` - Comprehensive deployment guide
+- `docker/SECURITY.md` - Security configuration and best practices
+- `docker/PRODUCTION_READY.md` - Production readiness summary
+- `docker/build-and-deploy.sh` - Automated deployment script
 - `DEPLOYMENT_FIXES_SUMMARY.md` - Detailed summary of all fixes applied
 - `CERTIFICATE_REGENERATION_SUMMARY.md` - Certificate regeneration procedures and standards
 - `SSL_CERTIFICATE_KEY_USAGE_FIX.md` - Certificate Key Usage issue analysis
@@ -245,6 +318,22 @@ This document contains ground rules specific to the SIRA Community application d
 
 ## Quick Reference Commands
 
+### Deployment
+```bash
+# Automated deployment (recommended)
+cd docker
+./build-and-deploy.sh
+
+# Manual deployment
+cd docker
+DOCKER_BUILDKIT=1 docker compose -f docker-compose.sira-community.app.yml build
+docker compose -f docker-compose.sira-community.app.yml up -d
+
+# Rebuild with no cache
+./build-and-deploy.sh --no-cache
+```
+
+### Service Management
 ```bash
 # Check all services status
 docker ps --filter "name=sira-community" --format "table {{.Names}}\t{{.Status}}"
@@ -260,5 +349,42 @@ docker exec sira-community-nginx wget -q -O- http://127.0.0.1/health
 docker exec sira-community-sidekiq sh -c "cat /proc/1/cmdline | grep -q sidekiq && echo 'OK'"
 
 # Recreate services
-docker-compose -f docker/docker-compose.sira-community.app.yml --env-file .env up -d --force-recreate
+docker compose -f docker/docker-compose.sira-community.app.yml up -d --force-recreate
+```
+
+### Asset Processor Verification
+```bash
+# Check if asset processor exists
+docker exec sira-community-app ls -lh /var/www/community/tmp/asset-processor.js
+
+# Verify asset processor size (should be ~18MB)
+docker exec sira-community-app du -h /var/www/community/tmp/asset-processor.js
+
+# Test asset processor build (if missing)
+docker exec sira-community-app bash -c "cd /var/www/community/frontend/asset-processor && pnpm install && pnpm -C=. node build.js > /var/www/community/tmp/asset-processor.js"
+```
+
+### Performance Monitoring
+```bash
+# Check resource usage
+docker stats sira-community-app sira-community-sidekiq sira-community-nginx
+
+# Check application performance
+docker exec sira-community-app bundle exec rails runner "puts 'Rails loaded in: ' + (Time.now - $start_time).to_s" &
+$start_time = Time.now
+```
+
+### Debugging
+```bash
+# Enter container
+docker exec -it sira-community-app bash
+
+# Check environment variables
+docker exec sira-community-app env | grep -E "(DISCOURSE|COMMUNITY|POSTGRES|REDIS)"
+
+# Test database connection
+docker exec sira-community-app bundle exec rails runner "puts ActiveRecord::Base.connection.execute('SELECT 1').first"
+
+# Test Redis connection
+docker exec sira-community-app bundle exec rails runner "puts Discourse.redis.ping"
 ```
