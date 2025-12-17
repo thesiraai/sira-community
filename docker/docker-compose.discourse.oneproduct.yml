@@ -67,7 +67,7 @@ services:
       - sira_app_network
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/community/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -82,6 +82,9 @@ networks:
     external: true
   sira_app_network:
     external: true
+    name: ${SIRA_APP_NETWORK:-sira_app_network}
     # App team should ensure the SIRA App edge nginx container is attached to this same external network.
+    # If your SIRA App compose project creates a differently-named network, set:
+    #   SIRA_APP_NETWORK=<that_network_name>
 
 
