@@ -132,7 +132,14 @@ Additionally, we aim to support Safari on iOS 16.4+.
 
 ## Integration with SIRA AI
 
-SIRA Community is designed to integrate seamlessly with the SIRA AI application. See `docs/INTEGRATION/INTEGRATION_GUIDE.md` for comprehensive integration documentation including:
+SIRA Community is designed to integrate seamlessly with the SIRA AI application. See:
+
+- `docs/INTEGRATION/SIRA_APP_INTEGRATION_GUIDE.md` — detailed SIRA App ↔ Community integration (SSO + APIs)
+- `docs/INTEGRATION/QUICK_REFERENCE.md` — paste-ready settings and environment variables
+- `docs/INTEGRATION/COMMUNITY_APP_SETUP.md` — Discourse admin panel setup checklist
+- `docs/INTEGRATION/INTEGRATION_GUIDE.md` — broader integration reference
+
+Key topics include:
 
 - REST API integration
 - Single Sign-On (SSO)

@@ -1,0 +1,8 @@
+name: discourse-sira-ai
+about: SIRA AI integration plugin for Discourse
+version: 0.1.0
+authors: SIRA AI Team
+url: https://github.com/sira-ai/discourse-sira-ai
+min_required_version: 3.0.0
+
+

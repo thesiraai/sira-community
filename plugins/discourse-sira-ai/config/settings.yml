@@ -1,0 +1,5 @@
+discourse_sira_ai:
+  sira_ai_enabled:
+    default: false
+    client: true
+

@@ -1,0 +1,123 @@
+# SIRA Community - Discourse (Local Production-Grade Stack)
+# - Discourse app container (Unicorn on port 3000, internal only)
+# - Nginx reverse proxy with HTTPS termination on ports 80/443
+# - Integrates with SIRA Infrastructure (postgres, redis)
+# - Connects to sira_infra_network
+
+services:
+  discourse:
+    image: discourse/discourse:latest
+    pull_policy: missing
+    container_name: sira-discourse
+    restart: unless-stopped
+    hostname: ${DISCOURSE_HOSTNAME:-local.community.sira.ai}
+    env_file:
+      - ./env.discourse.local
+    environment:
+      # Discourse Core Configuration
+      - DISCOURSE_HOSTNAME=${DISCOURSE_HOSTNAME:-local.community.sira.ai}
+      - DISCOURSE_PORT=${DISCOURSE_PORT:-8443}
+      - DISCOURSE_FORCE_HTTPS=${DISCOURSE_FORCE_HTTPS:-1}
+      - DISCOURSE_DEVELOPER_EMAILS=${DISCOURSE_DEVELOPER_EMAILS:-admin@sirahub.ai}
+      # SMTP configuration is loaded from env_file (env.discourse.local)
+      # Don't override with empty fallbacks - let env_file values take precedence
+      
+      # Database Configuration (using dedicated SIRA Community PostgreSQL infrastructure)
+      - DISCOURSE_DB_HOST=postgres-community
+      - DISCOURSE_DB_PORT=5432
+      - DISCOURSE_DB_NAME=${COMMUNITY_DB_NAME:-sira_community}
+      - DISCOURSE_DB_USERNAME=${COMMUNITY_DB_USERNAME:-sira_community_user}
+      - DISCOURSE_DB_PASSWORD=${COMMUNITY_DB_PASSWORD:-community_app_password_2025}
+      - DISCOURSE_DB_POOL=${COMMUNITY_DB_POOL:-8}
+      # PostgreSQL SSL Configuration (SSL with password authentication)
+      # Note: Using SSL with password auth (scram-sha-256) instead of client certificates
+      - DISCOURSE_DB_SSL_MODE=${DISCOURSE_DB_SSL_MODE:-require}
+      # Client certificates and CA not needed for password authentication
+      # DISCOURSE_DB_SSL_CERT, DISCOURSE_DB_SSL_KEY, and DISCOURSE_DB_SSL_CA not set
+      # Note: DISCOURSE_DB_VARIABLES_* should NOT include SSL parameters
+      # SSL parameters are handled by Discourse's production database configuration via DISCOURSE_DB_SSL_MODE
+      
+      # Redis Configuration (using dedicated SIRA Community Redis infrastructure)
+      # Using non-TLS Redis instance on port 6379
+      - DISCOURSE_REDIS_HOST=redis-community
+      - DISCOURSE_REDIS_PORT=${REDIS_PORT:-6379}
+      - DISCOURSE_REDIS_PASSWORD=${REDIS_PASSWORD:-community_redis_password_2025}
+      - DISCOURSE_REDIS_USE_SSL=${REDIS_TLS:-false}
+      
+      # SIRA AI Integration
+      - SIRA_API_URL=${SIRA_API_URL:-http://api.sira.ai}
+      - SIRA_API_KEY=${SIRA_API_KEY:-}
+      
+      # Security
+      - DISCOURSE_SECRET_KEY_BASE=9a74a693b2fd664e17080c8bb6d09f924b54686290231936792f84519102a25c790a910c5fc0bc76b79894cb3c7a0df45bb25374b3c08a89500bb3c31e96082f
+      - SECRET_KEY_BASE=9a74a693b2fd664e17080c8bb6d09f924b54686290231936792f84519102a25c790a910c5fc0bc76b79894cb3c7a0df45bb25374b3c08a89500bb3c31e96082f
+      
+      # Performance
+      - UNICORN_WORKERS=${NUM_WEBS:-2}
+      - DISCOURSE_SKIP_DB_AND_REDIS=${SKIP_DB_AND_REDIS:-0}
+      # Bind Unicorn to all interfaces (internal-only, no host port exposed)
+      - UNICORN_BIND_ALL=1
+      # Enable static asset serving (Discourse serves assets, nginx proxies to Discourse)
+      - DISCOURSE_SERVE_STATIC_ASSETS=1
+      
+    volumes:
+      # Discourse data persistence
+      - discourse_data:/var/www/discourse
+      # SIRA AI plugin (mount from local plugins directory)
+      - ../plugins/discourse-sira-ai:/var/www/discourse/plugins/discourse-sira-ai
+      # SSL certificates (DB/Redis mTLS, etc.)
+      - C:/Users/vvssi/OneDrive/Projects/AI Project/SIRA AI/Certs/sira-ca:/opt/sira-ai/ssl:ro
+      # SMTP initialization script (config-driven: enables SMTP if env vars are set)
+      - ./init-smtp.sh:/etc/runit/1.d/99-init-smtp.sh:ro
+      
+    # No host ports exposed; access is via nginx only.
+    networks:
+      - sira_infra_network
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+    # Resource hints for local production-grade quality (effective in Swarm,
+    # documented here; Docker Desktop may ignore deploy section in non-swarm mode).
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+        reservations:
+          cpus: "0.5"
+          memory: 512m
+
+  # Nginx reverse proxy providing HTTPS termination in front of Discourse.
+  discourse-nginx:
+    image: nginx:alpine
+    pull_policy: missing
+    container_name: sira-discourse-nginx
+    restart: unless-stopped
+    depends_on:
+      - discourse
+    ports:
+      # Expose HTTPS externally on 8443 to avoid conflicts with any local HTTP servers
+      # already bound to 443. Inside the container we still listen on 443.
+      - "8443:443"
+    volumes:
+      # Discourse-focused nginx configuration
+      - ./nginx/nginx-discourse.conf:/etc/nginx/nginx.conf:ro
+      # Local SSL certificates for HTTPS (drop fullchain.pem/privkey.pem here)
+      - ./nginx/ssl:/etc/nginx/ssl-certs:ro
+      # Nginx logs (for debugging and observability)
+      - ./nginx/logs:/var/log/nginx
+    networks:
+      - sira_infra_network
+
+volumes:
+  discourse_data:
+    driver: local
+
+networks:
+  sira_infra_network:
+    external: true

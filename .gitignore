@@ -76,8 +76,27 @@
 !/plugins/discourse-topic-voting
 !/plugins/discourse-templates
 !/plugins/discourse-ai
+!/plugins/discourse-sira-ai
 !/plugins/discourse-cakeday
 /plugins/*/auto_generated
+
+# ============================================================
+# SIRA Community - local-only files (never commit secrets/certs)
+# ============================================================
+
+# Local environment overrides (contains secrets)
+/docker/env.discourse.local
+
+# Local nginx TLS material (private keys / certs)
+/docker/nginx/ssl/*
+!/docker/nginx/ssl/.gitkeep
+
+# Local nginx logs
+/docker/nginx/logs/*
+!/docker/nginx/logs/.gitkeep
+
+# Local backup folders created during automation
+/.sira-local-backup-*/
 
 /spec/fixtures/plugins/my_plugin/auto_generated
 

@@ -1,236 +1,110 @@
-# SIRA Community Docker Deployment
+# SIRA Community - Discourse Docker Deployment
 
-Production-ready Docker setup for SIRA Community, designed to integrate seamlessly with the SIRA AI application ecosystem.
+This directory contains the Docker configuration for deploying Discourse using the official `discourse/discourse:latest` Docker image.
+
+## Architecture
+
+- **Discourse Container**: Official Discourse image (`discourse/discourse:latest`)
+- **Nginx Reverse Proxy**: HTTPS termination and routing
+- **Custom Plugin**: `plugins/discourse-sira-ai` mounted into container
+- **Infrastructure**: Connects to existing SIRA infrastructure (postgres-community, redis-community)
+
+## Files
+
+- `docker-compose.discourse.yml` - Docker Compose configuration
+- `env.discourse.local` - Local environment variables
+- `env.discourse.prod` - Production environment template
+- `nginx/nginx-discourse.conf` - Nginx reverse proxy configuration
+- `nginx/ssl/` - SSL certificates (fullchain.pem, privkey.pem)
+- `nginx/logs/` - Nginx access/error logs
+- `start-discourse.sh` / `start-discourse.ps1` - Helper scripts to start services
 
 ## Quick Start
 
-### 1. Configure Environment
+1. **Configure environment variables:**
+   ```bash
+   # Edit docker/env.discourse.local with your actual values
+   # Ensure COMMUNITY_SECRET_KEY_BASE and SIRA_API_KEY are set
+   ```
+
+2. **Place SSL certificates:**
+   Copy your SSL certificates to `docker/nginx/ssl/`:
+   - `fullchain.pem` - Server certificate + CA chain
+   - `privkey.pem` - Private key
+
+3. **Start services:**
+   ```bash
+   cd docker
+   ./start-discourse.sh
+   # Or on Windows:
+   .\start-discourse.ps1
+   ```
+
+4. **Access Discourse:**
+   - Add to hosts file: `127.0.0.1 local.community.sira.ai`
+   - Access: `https://local.community.sira.ai:8443`
+
+### TLS certificate note (local domain)
+
+The nginx container terminates HTTPS using the certs in `docker/nginx/ssl/` (`fullchain.pem`, `privkey.pem`).
+If your certificate was issued for a different hostname (e.g. `community.sira.ai`), your browser will show a TLS warning.
+For a clean local dev experience, generate a cert for `local.community.sira.ai` (e.g. with `mkcert`) and place it in `docker/nginx/ssl/`.
+
+## Create/Register the Admin Account (first install)
+
+On a fresh database, Discourse has no human admin yet. You must complete the setup wizard once to create the first admin user.
+
+### Option A (recommended): Web UI wizard
+
+1. Open: `https://local.community.sira.ai:8443`
+2. Click **Register Admin Account** (or open the wizard directly at `https://local.community.sira.ai:8443/wizard`)
+3. Enter the admin **email**, **username**, and **password**
+4. If email verification is enabled, click the activation link sent to the admin email
+
+### Option B: CLI fallback (inside the container)
+
+If the wizard is blocked for any reason, you can create an admin from inside the container:
 
 ```bash
-# Copy example environment file
-cp docker/env.community.app.example .env
-
-# Edit .env with your configuration
-nano .env
+docker exec -it sira-discourse bash -lc "cd /var/www/discourse && bundle exec rake admin:create"
 ```
 
-**Required Configuration:**
-- `COMMUNITY_HOSTNAME` - Your domain name
-- `COMMUNITY_DB_PASSWORD` - Secure database password
-- `COMMUNITY_SECRET_KEY_BASE` - Generate with: `docker/scripts/generate-secret.sh`
-- `COMMUNITY_SMTP_*` - Email server configuration
-
-### 2. Generate Secret Key
+If you see `fatal: detected dubious ownership in repository at '/var/www/discourse'`, run once:
 
 ```bash
-chmod +x docker/scripts/generate-secret.sh
-./docker/scripts/generate-secret.sh
-```
-
-### 3. Create SSL Certificates (for HTTPS)
-
-```bash
-# Create SSL directory
-mkdir -p docker/nginx/ssl
-
-# For development, create self-signed certificate:
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout docker/nginx/ssl/key.pem \
-  -out docker/nginx/ssl/cert.pem \
-  -subj "/CN=community.sira.ai"
-
-# For production, use Let's Encrypt or your CA certificates
-```
-
-### 4. Build and Start
-
-```bash
-# Build images
-docker-compose build
-
-# Start services
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f app
-```
-
-### 5. Initialize Database
-
-```bash
-# Run migrations
-docker-compose exec app bundle exec rake db:migrate
-
-# Seed initial data (optional)
-docker-compose exec app bundle exec rake db:seed_fu
+docker exec -it sira-discourse bash -lc "git config --global --add safe.directory /var/www/discourse"
 ```
 
 ## Services
 
-- **app** - Main Rails application (port 3000)
-- **sidekiq** - Background job processor
-- **postgres** - PostgreSQL 13 database
-- **redis** - Redis 7 cache
-- **nginx** - Reverse proxy with SSL (ports 80, 443)
+- **discourse** - Discourse application (internal port 3000, accessed via nginx)
+- **discourse-nginx** - Nginx reverse proxy (HTTPS on port 8443)
 
-## Integration with SIRA App
+## Environment Variables
 
-### Network Configuration
+Key variables in `env.discourse.local`:
 
-The Docker setup uses the `sira-network` network, allowing seamless communication with other SIRA services:
-
-```yaml
-# In your SIRA app docker-compose.yml
-networks:
-  sira-network:
-    external: true
-```
-
-### Environment Variables
-
-Set these in your SIRA app to connect to community:
-
-```bash
-COMMUNITY_URL=https://community.sira.ai
-COMMUNITY_API_KEY=your-api-key
-COMMUNITY_SSO_SECRET=your-sso-secret
-```
-
-### API Integration
-
-The community service exposes a REST API at `/api/` endpoints. See `INTEGRATION_GUIDE.md` for details.
-
-## Production Deployment
-
-### 1. Use Production-Grade SSL
-
-Replace self-signed certificates with Let's Encrypt or your CA:
-
-```bash
-# Let's Encrypt example
-certbot certonly --standalone -d community.sira.ai
-cp /etc/letsencrypt/live/community.sira.ai/fullchain.pem docker/nginx/ssl/cert.pem
-cp /etc/letsencrypt/live/community.sira.ai/privkey.pem docker/nginx/ssl/key.pem
-```
-
-### 2. Configure Backups
-
-```bash
-# Backup script
-docker-compose exec app bundle exec rake backups:create
-```
-
-### 3. Monitor Logs
-
-```bash
-# Application logs
-docker-compose logs -f app
-
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f sidekiq
-```
-
-### 4. Health Checks
-
-```bash
-# Application health
-curl http://localhost/health
-
-# Status endpoint
-curl http://localhost/srv/status
-```
-
-## Maintenance
-
-### Update Application
-
-```bash
-# Pull latest code
-git pull origin main
-
-# Rebuild and restart
-docker-compose build
-docker-compose up -d
-
-# Run migrations if needed
-docker-compose exec app bundle exec rake db:migrate
-```
-
-### Backup Database
-
-```bash
-# Create backup
-docker-compose exec postgres pg_dump -U community community > backup_$(date +%Y%m%d).sql
-
-# Restore backup
-docker-compose exec -T postgres psql -U community community < backup_20240101.sql
-```
-
-### Scale Services
-
-```bash
-# Scale sidekiq workers
-docker-compose up -d --scale sidekiq=3
-
-# Scale app instances (requires load balancer)
-docker-compose up -d --scale app=2
-```
+- `DISCOURSE_HOSTNAME` - Domain name (e.g., `local.community.sira.ai`)
+- `DISCOURSE_PORT` - Port for URL generation (e.g., `8443`)
+- `COMMUNITY_DB_NAME`, `COMMUNITY_DB_USERNAME`, `COMMUNITY_DB_PASSWORD` - PostgreSQL credentials
+- `REDIS_PASSWORD` - Redis password
+- `SIRA_API_KEY` - SIRA AI API key for integration
+- `DISCOURSE_SECRET_KEY_BASE` - Rails secret key
 
 ## Troubleshooting
 
-### Check Service Status
+- **Check logs:** `docker compose -f docker/docker-compose.discourse.yml logs -f discourse`
+- **Check nginx logs:** `docker compose -f docker/docker-compose.discourse.yml logs -f discourse-nginx`
+- **Database connection:** Verify `postgres-community` service is running and credentials match
+- **Redis connection:** Verify `redis-community` service is running and password matches
+- **SSL errors:** Ensure certificates are in `docker/nginx/ssl/` and CA is trusted
 
-```bash
-docker-compose ps
-docker-compose logs app
-```
+## Production Deployment
 
-### Access Container Shell
+For production, update `env.discourse.prod` with:
+1. Strong, unique passwords
+2. Production SMTP settings
+3. Production SSL certificates
+4. Production SIRA API key
 
-```bash
-docker-compose exec app bash
-docker-compose exec postgres psql -U community community
-docker-compose exec redis redis-cli
-```
-
-### Reset Everything
-
-```bash
-# Stop and remove containers
-docker-compose down
-
-# Remove volumes (WARNING: deletes data)
-docker-compose down -v
-
-# Rebuild from scratch
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-## Environment Variables Reference
-
-See `docker/env.community.app.example` for all available configuration options.
-
-## Security Considerations
-
-1. **Change all default passwords** in `.env`
-2. **Use strong secret keys** (128-character hex)
-3. **Enable HTTPS** with valid SSL certificates
-4. **Restrict network access** using firewall rules
-5. **Regular backups** of database and uploads
-6. **Keep images updated** with security patches
-
-## Support
-
-For integration help, see `INTEGRATION_GUIDE.md`.
-
-For deployment issues, check logs:
-```bash
-docker-compose logs -f
-```
-
-
-
+Then use: `docker compose -f docker/docker-compose.discourse.yml --env-file docker/env.discourse.prod up -d`
