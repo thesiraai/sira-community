@@ -44,6 +44,29 @@ This directory contains the Docker configuration for deploying Discourse using t
    - Add to hosts file: `127.0.0.1 local.community.sira.ai`
    - Access: `https://local.community.sira.ai:8443`
 
+## One Product Mode (served under SIRA App at `/community`)
+
+For the “one product” UX, Discourse is **not** accessed on its own hostname (like `local.community.sira.ai`). Instead it is reverse-proxied by the SIRA App edge nginx and served under:
+
+- `https://<env>.app.sira.ai/community/...`
+
+In this mode, this repo provides a compose file that runs **only** the Discourse container (no external nginx), so that SIRA App nginx can proxy `/community/*` to it securely on an internal Docker network.
+
+### Start Discourse for one-product mode (local template)
+
+```bash
+cd docker
+cp env.discourse.oneproduct.example env.discourse.oneproduct.local
+# edit env.discourse.oneproduct.local (secrets, hostname, port)
+docker compose -f docker-compose.discourse.oneproduct.yml --env-file env.discourse.oneproduct.local up -d
+```
+
+**Recommended upstream from SIRA App nginx (same-host Docker):**
+- `DISCOURSE_UPSTREAM=http://discourse:3000`
+
+**Important security note (production):**
+- Do **not** publish Discourse ports to the host; only the SIRA App nginx container should reach it over the private Docker network.
+
 ### TLS certificate note (local domain)
 
 The nginx container terminates HTTPS using the certs in `docker/nginx/ssl/` (`fullchain.pem`, `privkey.pem`).

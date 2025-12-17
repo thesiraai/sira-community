@@ -1,0 +1,87 @@
+# SIRA Community - Discourse (One Product Mode)
+# Runs Discourse intended to be reverse-proxied by SIRA App at:
+#   https://<env>.app.sira.ai/community
+#
+# Key differences vs docker-compose.discourse.yml:
+# - NO external-facing nginx here (SIRA App edge nginx owns TLS + /community routing)
+# - Discourse is reachable only on internal Docker networks (recommended)
+# - Configure subfolder mode via DISCOURSE_RELATIVE_URL_ROOT=/community
+#
+# Usage:
+#   cd docker
+#   cp env.discourse.oneproduct.example env.discourse.oneproduct.local   # fill secrets locally
+#   docker compose -f docker-compose.discourse.oneproduct.yml --env-file env.discourse.oneproduct.local up -d
+#
+
+services:
+  discourse:
+    image: discourse/discourse:latest
+    pull_policy: missing
+    restart: unless-stopped
+
+    # IMPORTANT: Do not publish ports to the host in production.
+    # SIRA App edge nginx should reach this service on the shared Docker network.
+
+    env_file:
+      - ./env.discourse.oneproduct.local
+    environment:
+      # One Product /community settings (subfolder mode)
+      - DISCOURSE_RELATIVE_URL_ROOT=${DISCOURSE_RELATIVE_URL_ROOT:-/community}
+      - DISCOURSE_HOSTNAME=${DISCOURSE_HOSTNAME:-local.app.sira.ai}
+      - DISCOURSE_PORT=${DISCOURSE_PORT:-8445}
+      - DISCOURSE_FORCE_HTTPS=${DISCOURSE_FORCE_HTTPS:-1}
+
+      # Discourse should generate URLs using the external origin (via forwarded headers from SIRA App nginx)
+      # Database
+      - DISCOURSE_DB_HOST=postgres-community
+      - DISCOURSE_DB_PORT=5432
+      - DISCOURSE_DB_NAME=${COMMUNITY_DB_NAME:-sira_community}
+      - DISCOURSE_DB_USERNAME=${COMMUNITY_DB_USERNAME:-sira_community_user}
+      - DISCOURSE_DB_PASSWORD=${COMMUNITY_DB_PASSWORD:-CHANGE_ME_COMMUNITY_DB_PASSWORD}
+      - DISCOURSE_DB_POOL=${COMMUNITY_DB_POOL:-8}
+      - DISCOURSE_DB_SSL_MODE=${DISCOURSE_DB_SSL_MODE:-require}
+
+      # Redis
+      - DISCOURSE_REDIS_HOST=redis-community
+      - DISCOURSE_REDIS_PORT=${REDIS_PORT:-6379}
+      - DISCOURSE_REDIS_PASSWORD=${REDIS_PASSWORD:-CHANGE_ME_REDIS_PASSWORD}
+      - DISCOURSE_REDIS_USE_SSL=${REDIS_TLS:-false}
+
+      # SIRA AI integration (optional)
+      - SIRA_API_URL=${SIRA_API_URL:-http://api.sira.ai}
+      - SIRA_API_KEY=${SIRA_API_KEY:-}
+
+      # Bind app to all interfaces (internal network)
+      - UNICORN_BIND_ALL=1
+      - DISCOURSE_SERVE_STATIC_ASSETS=1
+
+    volumes:
+      - discourse_data:/var/www/discourse
+      - ../plugins/discourse-sira-ai:/var/www/discourse/plugins/discourse-sira-ai
+      - ./init-smtp.sh:/etc/runit/1.d/99-init-smtp.sh:ro
+
+    networks:
+      # Infrastructure network (DB/Redis)
+      - sira_infra_network
+      # App network (edge nginx reaches discourse via Docker DNS)
+      - sira_app_network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+volumes:
+  discourse_data:
+    driver: local
+
+networks:
+  sira_infra_network:
+    external: true
+  sira_app_network:
+    external: true
+    # App team should ensure the SIRA App edge nginx container is attached to this same external network.
+
+

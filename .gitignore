@@ -86,6 +86,8 @@
 
 # Local environment overrides (contains secrets)
 /docker/env.discourse.local
+/docker/env.discourse.oneproduct.local
+/docker/env.discourse.oneproduct.*.local
 
 # Local nginx TLS material (private keys / certs)
 /docker/nginx/ssl/*
